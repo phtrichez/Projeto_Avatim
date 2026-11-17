@@ -84,6 +84,18 @@ st.markdown(
     }
     [data-testid="stMetricLabel"], [data-testid="stMetricLabel"] * { color: #52645d !important; }
     [data-testid="stMetricValue"], [data-testid="stMetricValue"] * { color: #173c35 !important; }
+    [data-testid="stMainBlockContainer"] h1,
+    [data-testid="stMainBlockContainer"] h2,
+    [data-testid="stMainBlockContainer"] h3 {
+        color: #173c35 !important;
+        opacity: 1 !important;
+        text-shadow: none !important;
+    }
+    [data-testid="stCaptionContainer"],
+    [data-testid="stCaptionContainer"] p {
+        color: #52645d !important;
+        opacity: 1 !important;
+    }
     @media (max-width: 640px) {
         [data-testid="stMainBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
         [data-testid="stMetric"] { min-height: 6.4rem; padding: .8rem; }
