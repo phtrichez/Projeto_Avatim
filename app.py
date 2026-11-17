@@ -73,57 +73,6 @@ def filtrar_busca(dados: pd.DataFrame, busca: str) -> pd.DataFrame:
     return dados[mascara]
 
 
-def perfis_em_comum(produto: pd.Series, perfis: list[str]) -> list[str]:
-    return sorted(etiquetas(produto["perfis_olfativos"]) & set(perfis))
-
-
-def motivos_da_sugestao(produto: pd.Series, atendimento: str, perfis: list[str]) -> str:
-    motivos = []
-    if atendimento in ATENDIMENTOS:
-        motivos.append(f"atende a necessidade de {atendimento.casefold()}")
-    perfis_compativeis = perfis_em_comum(produto, perfis)
-    if perfis_compativeis:
-        motivos.append(f"tem perfil {', '.join(perfis_compativeis).casefold()}")
-    if produto["disponivel"]:
-        motivos.append("está disponível")
-    return " e ".join(motivos).capitalize() + "."
-
-
-def fala_de_apoio(produto: pd.Series, para_quem: str) -> str:
-    apresentacao = produto["descricao_apresentacao"].strip() or produto["sobre_o_produto"].strip()
-    if len(apresentacao) > 220:
-        apresentacao = f"{apresentacao[:217].rsplit(' ', 1)[0]}..."
-    inicio = "Para presentear, " if para_quem == "Para presente" else "Para o dia a dia, "
-    return f"{inicio}{apresentacao}" if apresentacao else "Apresente as características e o modo de uso deste produto."
-
-
-def selecionar_sugestoes(dados: pd.DataFrame, atendimento: str, perfis: list[str]) -> pd.DataFrame:
-    if dados.empty or atendimento not in ATENDIMENTOS:
-        return dados.head(0)
-    sugestoes = dados.copy()
-    sugestoes["_pontuacao"] = 0
-    sugestoes.loc[sugestoes["disponivel"], "_pontuacao"] += 2
-    sugestoes.loc[sugestoes["descricao_apresentacao"].ne(""), "_pontuacao"] += 1
-    sugestoes["_pontuacao"] += sugestoes.apply(lambda produto: len(perfis_em_comum(produto, perfis)) * 3, axis=1)
-    return sugestoes.sort_values(
-        ["_pontuacao", "preco_atual_reais", "nome"], ascending=[False, True, True], na_position="last"
-    ).head(3)
-
-
-def sugestao_complementar(produto: pd.Series, catalogo: pd.DataFrame) -> pd.Series | None:
-    candidatos = catalogo[catalogo["identificador"] != produto["identificador"]].copy()
-    if candidatos.empty:
-        return None
-    mesma_fragrancia = candidatos["fragrancia"].eq(produto["fragrancia"]) & produto["fragrancia"].ne("")
-    outra_categoria = candidatos["categoria"].ne(produto["categoria"])
-    compativeis = candidatos[mesma_fragrancia & outra_categoria]
-    if compativeis.empty:
-        compativeis = candidatos[candidatos["linha"].eq(produto["linha"]) & candidatos["subcategoria"].ne(produto["subcategoria"])]
-    if compativeis.empty:
-        return None
-    return compativeis.sort_values(["disponivel", "nome"], ascending=[False, True]).iloc[0]
-
-
 if not CSV_PATH.exists():
     st.error("Não encontrei `data/produtos_avatim.csv`.")
     st.stop()
@@ -316,45 +265,30 @@ with pagina_catalogo:
         if st.session_state.get("grupo_catalogo") not in identificadores_grupo:
             st.session_state["grupo_catalogo"] = None
 
-        st.caption("Escolha um grupo para ver seus produtos.")
-        botoes_grupo = st.columns(2, gap="small")
-        for posicao, grupo in enumerate(grupos):
-            quantidade = int(filtrados[coluna_agrupamento].eq(grupo).sum())
-            with botoes_grupo[posicao % 2]:
-                if st.button(
-                    f"{grupo} ({quantidade})",
-                    key=f"grupo_{modo_agrupamento}_{posicao}",
-                    use_container_width=True,
-                ):
-                    st.session_state["grupo_catalogo"] = f"{modo_agrupamento}:{grupo}"
-
         grupo_escolhido = st.session_state.get("grupo_catalogo")
-        if grupo_escolhido:
+        if not grupo_escolhido:
+            st.caption("Escolha um grupo para ver seus produtos.")
+            botoes_grupo = st.columns(2, gap="small")
+            for posicao, grupo in enumerate(grupos):
+                quantidade = int(filtrados[coluna_agrupamento].eq(grupo).sum())
+                with botoes_grupo[posicao % 2]:
+                    if st.button(
+                        f"{grupo} ({quantidade})",
+                        key=f"grupo_{modo_agrupamento}_{posicao}",
+                        use_container_width=True,
+                    ):
+                        st.session_state["grupo_catalogo"] = f"{modo_agrupamento}:{grupo}"
+                        st.rerun()
+        else:
             _, valor_grupo = grupo_escolhido.split(":", maxsplit=1)
             produtos_exibidos = filtrados[filtrados[coluna_agrupamento].eq(valor_grupo)]
             cabecalho, acao_limpar = st.columns([4, 1])
             with cabecalho:
                 st.caption(f"EXIBINDO · {modo_agrupamento.upper()} · {valor_grupo}")
             with acao_limpar:
-                if st.button("Trocar", key="limpar_grupo_catalogo", use_container_width=True):
+                if st.button("×", key="limpar_grupo_catalogo", help="Voltar aos grupos", use_container_width=True):
                     st.session_state["grupo_catalogo"] = None
                     st.rerun()
-
-            if atendimento in ATENDIMENTOS:
-                sugestoes_do_grupo = selecionar_sugestoes(produtos_exibidos, atendimento, perfis_olfativos)
-                st.subheader("Sugestões para este atendimento")
-                st.caption("Opções alinhadas ao atendimento dentro do grupo escolhido.")
-                colunas_sugestoes = st.columns(len(sugestoes_do_grupo), gap="large")
-                for coluna, (_, sugestao) in zip(colunas_sugestoes, sugestoes_do_grupo.iterrows()):
-                    with coluna:
-                        with st.container(border=True):
-                            if sugestao["url_imagem_principal"]:
-                                st.image(sugestao["url_imagem_principal"], width="stretch")
-                            st.markdown(f'<p class="card-nome">{sugestao["nome"]}</p>', unsafe_allow_html=True)
-                            st.markdown(f'<p class="preco">{moeda(sugestao["preco_atual_reais"])}</p>', unsafe_allow_html=True)
-                            st.caption(f"POR QUE SUGERIR · {motivos_da_sugestao(sugestao, atendimento, perfis_olfativos)}")
-                            st.write(f"**Fala de apoio:** {fala_de_apoio(sugestao, para_quem)}")
-                st.divider()
 
             st.subheader(f"Produtos de {valor_grupo}")
             colunas = st.columns(3, gap="large")
@@ -431,18 +365,3 @@ with pagina_produto:
     if produto["sobre_a_fragancia"]:
         st.subheader("Sobre a fragrância")
         st.write(produto["sobre_a_fragancia"])
-
-    complemento = sugestao_complementar(produto, produtos[produtos["disponivel"]])
-    if complemento is not None:
-        st.divider()
-        st.subheader("Sugestão de complemento")
-        st.caption("Uma opção compatível para ampliar a experiência da cliente.")
-        coluna_complemento, coluna_acao = st.columns([3, 1])
-        with coluna_complemento:
-            st.write(f"**{complemento['nome']}** · {moeda(complemento['preco_atual_reais'])}")
-            if complemento["fragrancia"] == produto["fragrancia"] and produto["fragrancia"]:
-                st.caption("Compatível por compartilhar a mesma fragrância em outra categoria.")
-            else:
-                st.caption("Compatível por pertencer à mesma linha em outra subcategoria.")
-        with coluna_acao:
-            st.link_button("Ver no site", complemento["url"], use_container_width=True)
