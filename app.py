@@ -241,6 +241,18 @@ with st.sidebar:
         "O que ela procura?",
         ["Escolha uma necessidade", *ATENDIMENTOS],
     )
+    opcoes_tipo = produtos.copy()
+    if atendimento in ATENDIMENTOS:
+        opcoes_tipo = filtrar_por_etiquetas(opcoes_tipo, "categoria", ATENDIMENTOS[atendimento])
+    tipos_de_produto = ["Todos", *sorted(tipo for tipo in opcoes_tipo["subcategoria"].unique() if tipo)]
+    if st.session_state.get("refino_tipo_produto") not in tipos_de_produto:
+        st.session_state["refino_tipo_produto"] = "Todos"
+    tipo_produto = st.selectbox(
+        "Tipo de produto (opcional)",
+        tipos_de_produto,
+        key="refino_tipo_produto",
+        help="Use quando a cliente já souber que procura, por exemplo, um sabonete, óleo ou hidratante.",
+    )
     perfis_olfativos = st.multiselect("Perfil olfativo desejado (opcional)", valores_perfis(produtos["perfis_olfativos"]))
     somente_disponiveis = st.toggle("Somente disponíveis", value=False)
     limite_preco = float(produtos["preco_atual_reais"].max())
@@ -252,6 +264,8 @@ filtrados = produtos.copy()
 filtrados = filtrar_busca(filtrados, busca)
 if atendimento in ATENDIMENTOS:
     filtrados = filtrar_por_etiquetas(filtrados, "categoria", ATENDIMENTOS[atendimento])
+if tipo_produto != "Todos":
+    filtrados = filtrados[filtrados["subcategoria"].eq(tipo_produto)]
 if perfis_olfativos:
     filtrados = filtrados[
         filtrados["perfis_olfativos"].apply(lambda perfis: bool(etiquetas(perfis) & set(perfis_olfativos)))
