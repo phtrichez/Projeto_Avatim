@@ -42,6 +42,31 @@ def valores_perfis(coluna: pd.Series) -> list[str]:
     return sorted({perfil for item in coluna.dropna() for perfil in item.split("; ") if perfil})
 
 
+def etiquetas(valor: str) -> set[str]:
+    """Separa os valores que o catálogo armazena na mesma célula por ponto e vírgula."""
+    return {item.strip() for item in valor.split(";") if item.strip()}
+
+
+def valores_etiquetas(coluna: pd.Series) -> list[str]:
+    return sorted({etiqueta for valor in coluna.dropna() for etiqueta in etiquetas(valor)})
+
+
+def filtrar_por_etiquetas(dados: pd.DataFrame, coluna: str, selecionados: list[str]) -> pd.DataFrame:
+    if not selecionados:
+        return dados
+    escolhas = set(selecionados)
+    return dados[dados[coluna].apply(lambda valor: bool(etiquetas(valor) & escolhas))]
+
+
+def multiselect_cascata(rotulo: str, opcoes: list[str], chave: str) -> list[str]:
+    """Remove escolhas que deixaram de existir após um filtro anterior."""
+    selecionados = st.session_state.get(chave, [])
+    validos = [item for item in selecionados if item in opcoes]
+    if selecionados != validos:
+        st.session_state[chave] = validos
+    return st.multiselect(rotulo, opcoes, key=chave)
+
+
 def texto(valor: str) -> str:
     return valor if valor else "Informação não fornecida no catálogo."
 
@@ -158,13 +183,38 @@ with st.sidebar:
     st.caption("Catálogo de produtos para vendas")
     st.divider()
     busca = st.text_input("Buscar produto", placeholder="Nome, código ou descrição")
-    linhas = st.multiselect("Linha", valores(produtos["linha"]))
-    categorias = st.multiselect("Categoria", valores(produtos["categoria"]))
-    fragrancias = st.multiselect("Fragrância", valores(produtos["fragrancia"]))
-    perfis_olfativos = st.multiselect("Perfil olfativo", valores_perfis(produtos["perfis_olfativos"]))
     somente_disponiveis = st.toggle("Somente disponíveis", value=False)
     limite_preco = float(produtos["preco_atual_reais"].max())
     faixa_preco = st.slider("Faixa de preço", 0.0, limite_preco, (0.0, limite_preco), step=1.0)
+
+    # Cada filtro usa apenas os produtos que restaram dos anteriores. Assim, por
+    # exemplo, a subcategoria só exibe opções existentes na categoria escolhida.
+    opcoes_filtro = produtos.copy()
+    if busca:
+        pesquisa = busca.casefold()
+        campos_pesquisa = ("nome", "identificador", "descricao_apresentacao", "sobre_o_produto")
+        mascara = pd.Series(False, index=opcoes_filtro.index)
+        for campo in campos_pesquisa:
+            mascara |= opcoes_filtro[campo].str.casefold().str.contains(pesquisa, regex=False, na=False)
+        opcoes_filtro = opcoes_filtro[mascara]
+    if somente_disponiveis:
+        opcoes_filtro = opcoes_filtro[opcoes_filtro["disponivel"]]
+    opcoes_filtro = opcoes_filtro[opcoes_filtro["preco_atual_reais"].between(*faixa_preco, inclusive="both")]
+
+    categorias = multiselect_cascata("Categoria", valores_etiquetas(opcoes_filtro["categoria"]), "filtro_categoria")
+    opcoes_filtro = filtrar_por_etiquetas(opcoes_filtro, "categoria", categorias)
+    subcategorias = multiselect_cascata("Subcategoria", valores(opcoes_filtro["subcategoria"]), "filtro_subcategoria")
+    if subcategorias:
+        opcoes_filtro = opcoes_filtro[opcoes_filtro["subcategoria"].isin(subcategorias)]
+    linhas = multiselect_cascata("Linha", valores(opcoes_filtro["linha"]), "filtro_linha")
+    if linhas:
+        opcoes_filtro = opcoes_filtro[opcoes_filtro["linha"].isin(linhas)]
+    fragrancias = multiselect_cascata("Fragrância", valores(opcoes_filtro["fragrancia"]), "filtro_fragrancia")
+    if fragrancias:
+        opcoes_filtro = opcoes_filtro[opcoes_filtro["fragrancia"].isin(fragrancias)]
+    perfis_olfativos = multiselect_cascata(
+        "Perfil olfativo", valores_perfis(opcoes_filtro["perfis_olfativos"]), "filtro_perfil_olfativo"
+    )
 
 filtrados = produtos.copy()
 if busca:
@@ -174,10 +224,12 @@ if busca:
     for campo in campos_pesquisa:
         mascara |= filtrados[campo].str.casefold().str.contains(pesquisa, regex=False, na=False)
     filtrados = filtrados[mascara]
+if categorias:
+    filtrados = filtrar_por_etiquetas(filtrados, "categoria", categorias)
+if subcategorias:
+    filtrados = filtrados[filtrados["subcategoria"].isin(subcategorias)]
 if linhas:
     filtrados = filtrados[filtrados["linha"].isin(linhas)]
-if categorias:
-    filtrados = filtrados[filtrados["categoria"].isin(categorias)]
 if fragrancias:
     filtrados = filtrados[filtrados["fragrancia"].isin(fragrancias)]
 if perfis_olfativos:
@@ -221,6 +273,7 @@ with pagina_catalogo:
                     for rotulo, valor in (
                         ("CATEGORIA", produto_card["categoria"]),
                         ("LINHA", produto_card["linha"]),
+                        ("SUBCATEGORIA", produto_card["subcategoria"]),
                         ("FRAGRÂNCIA", produto_card["fragrancia"]),
                         ("PERFIL OLFATIVO", produto_card["perfis_olfativos"]),
                     ):
@@ -261,6 +314,7 @@ with pagina_produto:
         y.write(texto(produto["linha"]))
         z.caption("FRAGRÂNCIA")
         z.write(texto(produto["fragrancia"]))
+        st.caption(f"SUBCATEGORIA · {texto(produto['subcategoria'])}")
         if produto["perfis_olfativos"]:
             st.caption(f"PERFIS OLFATIVOS · {produto['perfis_olfativos']}")
         st.link_button("Ver no site da Avatim", produto["url"], use_container_width=True)
