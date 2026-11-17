@@ -289,7 +289,6 @@ if somente_disponiveis:
 if faixa_preco != (0.0, limite_preco):
     filtrados = filtrados[filtrados["preco_atual_reais"].between(*faixa_preco, inclusive="both")]
 filtrados = filtrados.sort_values(["nome", "identificador"])
-sugestoes = selecionar_sugestoes(filtrados, atendimento, perfis_olfativos)
 
 pagina_catalogo, pagina_produto = st.tabs(["Catálogo", "Detalhe do produto"])
 
@@ -304,27 +303,7 @@ with pagina_catalogo:
     if filtrados.empty:
         st.info("Nenhum produto encontrado para este atendimento. Ajuste o perfil ou a faixa de valor.")
     else:
-        if atendimento not in ATENDIMENTOS:
-            st.info("Comece escolhendo o que a cliente procura para receber sugestões guiadas.")
-        else:
-            st.subheader("Sugestões para este atendimento")
-            st.caption("Escolha uma delas para apresentar e use a justificativa como apoio na conversa.")
-            colunas_sugestoes = st.columns(len(sugestoes), gap="large")
-            for coluna, (_, sugestao) in zip(colunas_sugestoes, sugestoes.iterrows()):
-                with coluna:
-                    with st.container(border=True):
-                        if sugestao["url_imagem_principal"]:
-                            st.image(sugestao["url_imagem_principal"], width="stretch")
-                        st.markdown(f'<p class="card-nome">{sugestao["nome"]}</p>', unsafe_allow_html=True)
-                        st.markdown(f'<p class="preco">{moeda(sugestao["preco_atual_reais"])}</p>', unsafe_allow_html=True)
-                        st.badge(
-                            "Disponível" if sugestao["disponivel"] else "Indisponível",
-                            color="green" if sugestao["disponivel"] else "red",
-                        )
-                        st.caption(f"POR QUE SUGERIR · {motivos_da_sugestao(sugestao, atendimento, perfis_olfativos)}")
-                        st.write(f"**Fala de apoio:** {fala_de_apoio(sugestao, para_quem)}")
-            st.divider()
-        st.subheader("Explore os resultados")
+        st.subheader("Escolha por onde explorar")
         modo_agrupamento = st.radio(
             "Organizar produtos por",
             ["Subcategoria", "Linha"],
@@ -361,6 +340,23 @@ with pagina_catalogo:
                     st.session_state["grupo_catalogo"] = None
                     st.rerun()
 
+            if atendimento in ATENDIMENTOS:
+                sugestoes_do_grupo = selecionar_sugestoes(produtos_exibidos, atendimento, perfis_olfativos)
+                st.subheader("Sugestões para este atendimento")
+                st.caption("Opções alinhadas ao atendimento dentro do grupo escolhido.")
+                colunas_sugestoes = st.columns(len(sugestoes_do_grupo), gap="large")
+                for coluna, (_, sugestao) in zip(colunas_sugestoes, sugestoes_do_grupo.iterrows()):
+                    with coluna:
+                        with st.container(border=True):
+                            if sugestao["url_imagem_principal"]:
+                                st.image(sugestao["url_imagem_principal"], width="stretch")
+                            st.markdown(f'<p class="card-nome">{sugestao["nome"]}</p>', unsafe_allow_html=True)
+                            st.markdown(f'<p class="preco">{moeda(sugestao["preco_atual_reais"])}</p>', unsafe_allow_html=True)
+                            st.caption(f"POR QUE SUGERIR · {motivos_da_sugestao(sugestao, atendimento, perfis_olfativos)}")
+                            st.write(f"**Fala de apoio:** {fala_de_apoio(sugestao, para_quem)}")
+                st.divider()
+
+            st.subheader(f"Produtos de {valor_grupo}")
             colunas = st.columns(3, gap="large")
             for posicao, (_, produto_card) in enumerate(produtos_exibidos.iterrows()):
                 with colunas[posicao % 3]:
