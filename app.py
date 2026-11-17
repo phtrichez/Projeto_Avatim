@@ -253,7 +253,21 @@ with st.sidebar:
         key="refino_tipo_produto",
         help="Use quando a cliente já souber que procura, por exemplo, um sabonete, óleo ou hidratante.",
     )
-    perfis_olfativos = st.multiselect("Perfil olfativo desejado (opcional)", valores_perfis(produtos["perfis_olfativos"]))
+    opcoes_perfil = opcoes_tipo
+    if tipo_produto != "Todos":
+        opcoes_perfil = opcoes_perfil[opcoes_perfil["subcategoria"].eq(tipo_produto)]
+    perfis_disponiveis = valores_perfis(opcoes_perfil["perfis_olfativos"])
+    perfis_selecionados = st.session_state.get("refino_perfil_olfativo", [])
+    if any(perfil not in perfis_disponiveis for perfil in perfis_selecionados):
+        st.session_state["refino_perfil_olfativo"] = [
+            perfil for perfil in perfis_selecionados if perfil in perfis_disponiveis
+        ]
+    perfis_olfativos = st.multiselect(
+        "Perfil olfativo desejado (opcional)",
+        perfis_disponiveis,
+        key="refino_perfil_olfativo",
+        help="Ao escolher mais de um perfil, serão mostrados produtos com qualquer um deles.",
+    )
     somente_disponiveis = st.toggle("Somente disponíveis", value=False)
     limite_preco = float(produtos["preco_atual_reais"].max())
     faixa_preco = st.slider("Quanto pretende investir?", 0.0, limite_preco, (0.0, limite_preco), step=1.0)
