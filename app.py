@@ -34,21 +34,12 @@ def moeda(valor: float | None) -> str:
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def valores(coluna: pd.Series) -> list[str]:
-    return sorted(valor for valor in coluna.dropna().unique() if valor)
-
-
 def valores_perfis(coluna: pd.Series) -> list[str]:
     return sorted({perfil for item in coluna.dropna() for perfil in item.split("; ") if perfil})
 
 
 def etiquetas(valor: str) -> set[str]:
-    """Separa os valores que o catálogo armazena na mesma célula por ponto e vírgula."""
     return {item.strip() for item in valor.split(";") if item.strip()}
-
-
-def valores_etiquetas(coluna: pd.Series) -> list[str]:
-    return sorted({etiqueta for valor in coluna.dropna() for etiqueta in etiquetas(valor)})
 
 
 def filtrar_por_etiquetas(dados: pd.DataFrame, coluna: str, selecionados: list[str]) -> pd.DataFrame:
@@ -58,17 +49,79 @@ def filtrar_por_etiquetas(dados: pd.DataFrame, coluna: str, selecionados: list[s
     return dados[dados[coluna].apply(lambda valor: bool(etiquetas(valor) & escolhas))]
 
 
-def multiselect_cascata(rotulo: str, opcoes: list[str], chave: str) -> list[str]:
-    """Remove escolhas que deixaram de existir após um filtro anterior."""
-    selecionados = st.session_state.get(chave, [])
-    validos = [item for item in selecionados if item in opcoes]
-    if selecionados != validos:
-        st.session_state[chave] = validos
-    return st.multiselect(rotulo, opcoes, key=chave)
-
-
 def texto(valor: str) -> str:
     return valor if valor else "Informação não fornecida no catálogo."
+
+
+ATENDIMENTOS = {
+    "Cuidar do corpo": ["Corpo"],
+    "Perfumar ambientes": ["Ambiente"],
+    "Encontrar um presente": ["Kits"],
+    "Conhecer produtos masculinos": ["Homem"],
+    "Encontrar acessórios e bem-estar": ["Acessórios"],
+}
+
+
+def filtrar_busca(dados: pd.DataFrame, busca: str) -> pd.DataFrame:
+    if not busca:
+        return dados
+    pesquisa = busca.casefold()
+    campos_pesquisa = ("nome", "identificador", "descricao_apresentacao", "sobre_o_produto")
+    mascara = pd.Series(False, index=dados.index)
+    for campo in campos_pesquisa:
+        mascara |= dados[campo].str.casefold().str.contains(pesquisa, regex=False, na=False)
+    return dados[mascara]
+
+
+def perfis_em_comum(produto: pd.Series, perfis: list[str]) -> list[str]:
+    return sorted(etiquetas(produto["perfis_olfativos"]) & set(perfis))
+
+
+def motivos_da_sugestao(produto: pd.Series, atendimento: str, perfis: list[str]) -> str:
+    motivos = []
+    if atendimento in ATENDIMENTOS:
+        motivos.append(f"atende a necessidade de {atendimento.casefold()}")
+    perfis_compativeis = perfis_em_comum(produto, perfis)
+    if perfis_compativeis:
+        motivos.append(f"tem perfil {', '.join(perfis_compativeis).casefold()}")
+    if produto["disponivel"]:
+        motivos.append("está disponível")
+    return " e ".join(motivos).capitalize() + "."
+
+
+def fala_de_apoio(produto: pd.Series, para_quem: str) -> str:
+    apresentacao = produto["descricao_apresentacao"].strip() or produto["sobre_o_produto"].strip()
+    if len(apresentacao) > 220:
+        apresentacao = f"{apresentacao[:217].rsplit(' ', 1)[0]}..."
+    inicio = "Para presentear, " if para_quem == "Para presente" else "Para o dia a dia, "
+    return f"{inicio}{apresentacao}" if apresentacao else "Apresente as características e o modo de uso deste produto."
+
+
+def selecionar_sugestoes(dados: pd.DataFrame, atendimento: str, perfis: list[str]) -> pd.DataFrame:
+    if dados.empty or atendimento not in ATENDIMENTOS:
+        return dados.head(0)
+    sugestoes = dados.copy()
+    sugestoes["_pontuacao"] = 0
+    sugestoes.loc[sugestoes["disponivel"], "_pontuacao"] += 2
+    sugestoes.loc[sugestoes["descricao_apresentacao"].ne(""), "_pontuacao"] += 1
+    sugestoes["_pontuacao"] += sugestoes.apply(lambda produto: len(perfis_em_comum(produto, perfis)) * 3, axis=1)
+    return sugestoes.sort_values(
+        ["_pontuacao", "preco_atual_reais", "nome"], ascending=[False, True, True], na_position="last"
+    ).head(3)
+
+
+def sugestao_complementar(produto: pd.Series, catalogo: pd.DataFrame) -> pd.Series | None:
+    candidatos = catalogo[catalogo["identificador"] != produto["identificador"]].copy()
+    if candidatos.empty:
+        return None
+    mesma_fragrancia = candidatos["fragrancia"].eq(produto["fragrancia"]) & produto["fragrancia"].ne("")
+    outra_categoria = candidatos["categoria"].ne(produto["categoria"])
+    compativeis = candidatos[mesma_fragrancia & outra_categoria]
+    if compativeis.empty:
+        compativeis = candidatos[candidatos["linha"].eq(produto["linha"]) & candidatos["subcategoria"].ne(produto["subcategoria"])]
+    if compativeis.empty:
+        return None
+    return compativeis.sort_values(["disponivel", "nome"], ascending=[False, True]).iloc[0]
 
 
 if not CSV_PATH.exists():
@@ -180,81 +233,69 @@ st.markdown(
 
 with st.sidebar:
     st.title("Avatim")
-    st.caption("Catálogo de produtos para vendas")
+    st.caption("Roteiro rápido para apoiar o atendimento")
     st.divider()
-    busca = st.text_input("Buscar produto", placeholder="Nome, código ou descrição")
+    st.subheader("Entenda a cliente")
+    para_quem = st.radio("A compra é para?", ["Para mim", "Para presente"], horizontal=True)
+    atendimento = st.selectbox(
+        "O que ela procura?",
+        ["Escolha uma necessidade", *ATENDIMENTOS],
+    )
+    perfis_olfativos = st.multiselect("Perfil olfativo desejado (opcional)", valores_perfis(produtos["perfis_olfativos"]))
     somente_disponiveis = st.toggle("Somente disponíveis", value=False)
     limite_preco = float(produtos["preco_atual_reais"].max())
-    faixa_preco = st.slider("Faixa de preço", 0.0, limite_preco, (0.0, limite_preco), step=1.0)
-
-    # Cada filtro usa apenas os produtos que restaram dos anteriores. Assim, por
-    # exemplo, a subcategoria só exibe opções existentes na categoria escolhida.
-    opcoes_filtro = produtos.copy()
-    if busca:
-        pesquisa = busca.casefold()
-        campos_pesquisa = ("nome", "identificador", "descricao_apresentacao", "sobre_o_produto")
-        mascara = pd.Series(False, index=opcoes_filtro.index)
-        for campo in campos_pesquisa:
-            mascara |= opcoes_filtro[campo].str.casefold().str.contains(pesquisa, regex=False, na=False)
-        opcoes_filtro = opcoes_filtro[mascara]
-    if somente_disponiveis:
-        opcoes_filtro = opcoes_filtro[opcoes_filtro["disponivel"]]
-    opcoes_filtro = opcoes_filtro[opcoes_filtro["preco_atual_reais"].between(*faixa_preco, inclusive="both")]
-
-    categorias = multiselect_cascata("Categoria", valores_etiquetas(opcoes_filtro["categoria"]), "filtro_categoria")
-    opcoes_filtro = filtrar_por_etiquetas(opcoes_filtro, "categoria", categorias)
-    subcategorias = multiselect_cascata("Subcategoria", valores(opcoes_filtro["subcategoria"]), "filtro_subcategoria")
-    if subcategorias:
-        opcoes_filtro = opcoes_filtro[opcoes_filtro["subcategoria"].isin(subcategorias)]
-    linhas = multiselect_cascata("Linha", valores(opcoes_filtro["linha"]), "filtro_linha")
-    if linhas:
-        opcoes_filtro = opcoes_filtro[opcoes_filtro["linha"].isin(linhas)]
-    fragrancias = multiselect_cascata("Fragrância", valores(opcoes_filtro["fragrancia"]), "filtro_fragrancia")
-    if fragrancias:
-        opcoes_filtro = opcoes_filtro[opcoes_filtro["fragrancia"].isin(fragrancias)]
-    perfis_olfativos = multiselect_cascata(
-        "Perfil olfativo", valores_perfis(opcoes_filtro["perfis_olfativos"]), "filtro_perfil_olfativo"
-    )
+    faixa_preco = st.slider("Quanto pretende investir?", 0.0, limite_preco, (0.0, limite_preco), step=1.0)
+    with st.expander("Localizar produto já conhecido"):
+        busca = st.text_input("Nome ou código", placeholder="Ex.: difusor, 1071580500")
 
 filtrados = produtos.copy()
-if busca:
-    pesquisa = busca.casefold()
-    campos_pesquisa = ("nome", "identificador", "descricao_apresentacao", "sobre_o_produto")
-    mascara = pd.Series(False, index=filtrados.index)
-    for campo in campos_pesquisa:
-        mascara |= filtrados[campo].str.casefold().str.contains(pesquisa, regex=False, na=False)
-    filtrados = filtrados[mascara]
-if categorias:
-    filtrados = filtrar_por_etiquetas(filtrados, "categoria", categorias)
-if subcategorias:
-    filtrados = filtrados[filtrados["subcategoria"].isin(subcategorias)]
-if linhas:
-    filtrados = filtrados[filtrados["linha"].isin(linhas)]
-if fragrancias:
-    filtrados = filtrados[filtrados["fragrancia"].isin(fragrancias)]
+filtrados = filtrar_busca(filtrados, busca)
+if atendimento in ATENDIMENTOS:
+    filtrados = filtrar_por_etiquetas(filtrados, "categoria", ATENDIMENTOS[atendimento])
 if perfis_olfativos:
     filtrados = filtrados[
-        filtrados["perfis_olfativos"].apply(lambda perfis: any(perfil in perfis.split("; ") for perfil in perfis_olfativos))
+        filtrados["perfis_olfativos"].apply(lambda perfis: bool(etiquetas(perfis) & set(perfis_olfativos)))
     ]
 if somente_disponiveis:
     filtrados = filtrados[filtrados["disponivel"]]
-filtrados = filtrados[filtrados["preco_atual_reais"].between(*faixa_preco, inclusive="both")]
+if faixa_preco != (0.0, limite_preco):
+    filtrados = filtrados[filtrados["preco_atual_reais"].between(*faixa_preco, inclusive="both")]
 filtrados = filtrados.sort_values(["nome", "identificador"])
+sugestoes = selecionar_sugestoes(filtrados, atendimento, perfis_olfativos)
 
 pagina_catalogo, pagina_produto = st.tabs(["Catálogo", "Detalhe do produto"])
 
 with pagina_catalogo:
     st.title("Produtos Avatim")
-    st.caption("Consulte o catálogo e abra a ficha completa de cada item.")
-    a, b, c = st.columns(3)
+    st.caption("Use o roteiro lateral para encontrar opções alinhadas ao atendimento.")
+    a, b = st.columns(2)
     a.metric("Produtos encontrados", len(filtrados))
     b.metric("Disponíveis", int(filtrados["disponivel"].sum()))
-    c.metric("Preço médio", moeda(filtrados["preco_atual_reais"].mean()))
     st.divider()
 
     if filtrados.empty:
-        st.info("Nenhum produto encontrado com estes filtros.")
+        st.info("Nenhum produto encontrado para este atendimento. Ajuste o perfil ou a faixa de valor.")
     else:
+        if atendimento not in ATENDIMENTOS:
+            st.info("Comece escolhendo o que a cliente procura para receber sugestões guiadas.")
+        else:
+            st.subheader("Sugestões para este atendimento")
+            st.caption("Escolha uma delas para apresentar e use a justificativa como apoio na conversa.")
+            colunas_sugestoes = st.columns(len(sugestoes), gap="large")
+            for coluna, (_, sugestao) in zip(colunas_sugestoes, sugestoes.iterrows()):
+                with coluna:
+                    with st.container(border=True):
+                        if sugestao["url_imagem_principal"]:
+                            st.image(sugestao["url_imagem_principal"], width="stretch")
+                        st.markdown(f'<p class="card-nome">{sugestao["nome"]}</p>', unsafe_allow_html=True)
+                        st.markdown(f'<p class="preco">{moeda(sugestao["preco_atual_reais"])}</p>', unsafe_allow_html=True)
+                        st.badge(
+                            "Disponível" if sugestao["disponivel"] else "Indisponível",
+                            color="green" if sugestao["disponivel"] else "red",
+                        )
+                        st.caption(f"POR QUE SUGERIR · {motivos_da_sugestao(sugestao, atendimento, perfis_olfativos)}")
+                        st.write(f"**Fala de apoio:** {fala_de_apoio(sugestao, para_quem)}")
+            st.divider()
         st.caption("Role a página para explorar os produtos filtrados.")
         colunas = st.columns(3, gap="large")
         for posicao, (_, produto_card) in enumerate(filtrados.iterrows()):
@@ -330,3 +371,18 @@ with pagina_produto:
     if produto["sobre_a_fragancia"]:
         st.subheader("Sobre a fragrância")
         st.write(produto["sobre_a_fragancia"])
+
+    complemento = sugestao_complementar(produto, produtos[produtos["disponivel"]])
+    if complemento is not None:
+        st.divider()
+        st.subheader("Sugestão de complemento")
+        st.caption("Uma opção compatível para ampliar a experiência da cliente.")
+        coluna_complemento, coluna_acao = st.columns([3, 1])
+        with coluna_complemento:
+            st.write(f"**{complemento['nome']}** · {moeda(complemento['preco_atual_reais'])}")
+            if complemento["fragrancia"] == produto["fragrancia"] and produto["fragrancia"]:
+                st.caption("Compatível por compartilhar a mesma fragrância em outra categoria.")
+            else:
+                st.caption("Compatível por pertencer à mesma linha em outra subcategoria.")
+        with coluna_acao:
+            st.link_button("Ver no site", complemento["url"], use_container_width=True)
