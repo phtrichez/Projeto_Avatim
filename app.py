@@ -96,6 +96,47 @@ st.markdown(
         color: #52645d !important;
         opacity: 1 !important;
     }
+    /* Controles do menu lateral no desktop e no mobile (nomes variam por versão do Streamlit). */
+    [data-testid="stSidebarCollapseButton"],
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"] {
+        background: #173c35 !important;
+        border: 1px solid #173c35 !important;
+        border-radius: .6rem !important;
+        box-shadow: 0 2px 6px rgba(23, 60, 53, .22);
+        color: #ffffff !important;
+        opacity: 1 !important;
+    }
+    [data-testid="stSidebarCollapseButton"] *,
+    [data-testid="stSidebarCollapsedControl"] *,
+    [data-testid="collapsedControl"] * {
+        color: #ffffff !important;
+        fill: #ffffff !important;
+        opacity: 1 !important;
+    }
+    /* Streamlit Cloud usa estes seletores para o controle de menu no cabeçalho. */
+    button[kind="header"],
+    button[data-testid="baseButton-header"],
+    button[data-testid="baseButton-headerNoPadding"] {
+        background: #173c35 !important;
+        color: #ffffff !important;
+        border: 1px solid #173c35 !important;
+        border-radius: .55rem !important;
+        opacity: 1 !important;
+    }
+    button[kind="header"] svg,
+    button[data-testid="baseButton-header"] svg,
+    button[data-testid="baseButton-headerNoPadding"] svg {
+        fill: #ffffff !important;
+        stroke: #ffffff !important;
+        opacity: 1 !important;
+    }
+    button[data-baseweb="tab"] {
+        color: #52645d !important;
+        opacity: 1 !important;
+        font-weight: 600 !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] { color: #a84d32 !important; }
     @media (max-width: 640px) {
         [data-testid="stMainBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
         [data-testid="stMetric"] { min-height: 6.4rem; padding: .8rem; }
