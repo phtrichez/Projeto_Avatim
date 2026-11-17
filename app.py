@@ -99,7 +99,8 @@ st.markdown(
     /* Controles do menu lateral no desktop e no mobile (nomes variam por versão do Streamlit). */
     [data-testid="stSidebarCollapseButton"],
     [data-testid="stSidebarCollapsedControl"],
-    [data-testid="collapsedControl"] {
+    [data-testid="collapsedControl"],
+    [data-testid="stExpandSidebarButton"] {
         background: #173c35 !important;
         border: 1px solid #173c35 !important;
         border-radius: .6rem !important;
@@ -109,7 +110,8 @@ st.markdown(
     }
     [data-testid="stSidebarCollapseButton"] *,
     [data-testid="stSidebarCollapsedControl"] *,
-    [data-testid="collapsedControl"] * {
+    [data-testid="collapsedControl"] *,
+    [data-testid="stExpandSidebarButton"] * {
         color: #ffffff !important;
         fill: #ffffff !important;
         opacity: 1 !important;
@@ -131,12 +133,16 @@ st.markdown(
         stroke: #ffffff !important;
         opacity: 1 !important;
     }
-    button[data-baseweb="tab"] {
+    button[data-baseweb="tab"],
+    [data-testid="stTab"],
+    [data-testid="stTab"] * {
         color: #52645d !important;
         opacity: 1 !important;
         font-weight: 600 !important;
     }
-    button[data-baseweb="tab"][aria-selected="true"] { color: #a84d32 !important; }
+    button[data-baseweb="tab"][aria-selected="true"],
+    [data-testid="stTab"][data-selected],
+    [data-testid="stTab"][data-selected] * { color: #a84d32 !important; }
     @media (max-width: 640px) {
         [data-testid="stMainBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
         [data-testid="stMetric"] { min-height: 6.4rem; padding: .8rem; }
