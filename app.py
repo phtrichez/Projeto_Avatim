@@ -324,31 +324,67 @@ with pagina_catalogo:
                         st.caption(f"POR QUE SUGERIR · {motivos_da_sugestao(sugestao, atendimento, perfis_olfativos)}")
                         st.write(f"**Fala de apoio:** {fala_de_apoio(sugestao, para_quem)}")
             st.divider()
-        st.caption("Role a página para explorar os produtos filtrados.")
-        colunas = st.columns(3, gap="large")
-        for posicao, (_, produto_card) in enumerate(filtrados.iterrows()):
-            with colunas[posicao % 3]:
-                with st.container(border=True):
-                    if produto_card["url_imagem_principal"]:
-                        st.image(produto_card["url_imagem_principal"], width="stretch")
-                    else:
-                        st.info("Imagem não disponível")
-                    st.markdown(f'<p class="card-nome">{produto_card["nome"]}</p>', unsafe_allow_html=True)
-                    st.markdown(f'<p class="preco">{moeda(produto_card["preco_atual_reais"])}</p>', unsafe_allow_html=True)
-                    st.badge(
-                        "Disponível" if produto_card["disponivel"] else "Indisponível",
-                        color="green" if produto_card["disponivel"] else "red",
-                    )
-                    for rotulo, valor in (
-                        ("CATEGORIA", produto_card["categoria"]),
-                        ("LINHA", produto_card["linha"]),
-                        ("SUBCATEGORIA", produto_card["subcategoria"]),
-                        ("FRAGRÂNCIA", produto_card["fragrancia"]),
-                        ("PERFIL OLFATIVO", produto_card["perfis_olfativos"]),
-                    ):
-                        if valor:
-                            st.markdown(f'<p class="card-rotulo">{rotulo}</p><p class="card-valor">{valor}</p>', unsafe_allow_html=True)
-                    st.link_button("Ver no site da Avatim", produto_card["url"], width="stretch")
+        st.subheader("Explore os resultados")
+        modo_agrupamento = st.radio(
+            "Organizar produtos por",
+            ["Subcategoria", "Linha"],
+            horizontal=True,
+            key="modo_agrupamento_catalogo",
+        )
+        coluna_agrupamento = "subcategoria" if modo_agrupamento == "Subcategoria" else "linha"
+        grupos = sorted(valor for valor in filtrados[coluna_agrupamento].unique() if valor)
+        identificadores_grupo = {f"{modo_agrupamento}:{grupo}" for grupo in grupos}
+        if st.session_state.get("grupo_catalogo") not in identificadores_grupo:
+            st.session_state["grupo_catalogo"] = None
+
+        st.caption("Escolha um grupo para ver seus produtos.")
+        botoes_grupo = st.columns(2, gap="small")
+        for posicao, grupo in enumerate(grupos):
+            quantidade = int(filtrados[coluna_agrupamento].eq(grupo).sum())
+            with botoes_grupo[posicao % 2]:
+                if st.button(
+                    f"{grupo} ({quantidade})",
+                    key=f"grupo_{modo_agrupamento}_{posicao}",
+                    use_container_width=True,
+                ):
+                    st.session_state["grupo_catalogo"] = f"{modo_agrupamento}:{grupo}"
+
+        grupo_escolhido = st.session_state.get("grupo_catalogo")
+        if grupo_escolhido:
+            _, valor_grupo = grupo_escolhido.split(":", maxsplit=1)
+            produtos_exibidos = filtrados[filtrados[coluna_agrupamento].eq(valor_grupo)]
+            cabecalho, acao_limpar = st.columns([4, 1])
+            with cabecalho:
+                st.caption(f"EXIBINDO · {modo_agrupamento.upper()} · {valor_grupo}")
+            with acao_limpar:
+                if st.button("Trocar", key="limpar_grupo_catalogo", use_container_width=True):
+                    st.session_state["grupo_catalogo"] = None
+                    st.rerun()
+
+            colunas = st.columns(3, gap="large")
+            for posicao, (_, produto_card) in enumerate(produtos_exibidos.iterrows()):
+                with colunas[posicao % 3]:
+                    with st.container(border=True):
+                        if produto_card["url_imagem_principal"]:
+                            st.image(produto_card["url_imagem_principal"], width="stretch")
+                        else:
+                            st.info("Imagem não disponível")
+                        st.markdown(f'<p class="card-nome">{produto_card["nome"]}</p>', unsafe_allow_html=True)
+                        st.markdown(f'<p class="preco">{moeda(produto_card["preco_atual_reais"])}</p>', unsafe_allow_html=True)
+                        st.badge(
+                            "Disponível" if produto_card["disponivel"] else "Indisponível",
+                            color="green" if produto_card["disponivel"] else "red",
+                        )
+                        for rotulo, valor in (
+                            ("CATEGORIA", produto_card["categoria"]),
+                            ("LINHA", produto_card["linha"]),
+                            ("SUBCATEGORIA", produto_card["subcategoria"]),
+                            ("FRAGRÂNCIA", produto_card["fragrancia"]),
+                            ("PERFIL OLFATIVO", produto_card["perfis_olfativos"]),
+                        ):
+                            if valor:
+                                st.markdown(f'<p class="card-rotulo">{rotulo}</p><p class="card-valor">{valor}</p>', unsafe_allow_html=True)
+                        st.link_button("Ver no site da Avatim", produto_card["url"], width="stretch")
 
 with pagina_produto:
     indice_padrao = st.session_state.get("produto_selecionado", filtrados.index[0] if not filtrados.empty else produtos.index[0])
