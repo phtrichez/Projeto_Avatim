@@ -63,7 +63,8 @@ produtos = produtos.merge(
 st.markdown(
     """
     <style>
-    .stApp { background: #fbfaf7; }
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] { background: #fbfaf7 !important; }
+    [data-testid="stMainBlockContainer"] { background: #fbfaf7; }
     [data-testid="stSidebar"] { background: #173c35; }
     [data-testid="stSidebar"] * { color: #f7f0e3; }
     .produto-titulo { color: #173c35; font-size: 2.15rem; font-weight: 700; margin-bottom: 0; }
@@ -73,6 +74,21 @@ st.markdown(
     .card-nome { color: #173c35; font-size: 1.1rem; font-weight: 700; line-height: 1.3; min-height: 3rem; }
     .card-rotulo { color: #65736d; font-size: .72rem; font-weight: 700; letter-spacing: .04rem; margin-top: .7rem; }
     .card-valor { color: #263f38; font-size: .9rem; margin-bottom: 0; }
+    [data-testid="stMetric"] {
+        background: #ffffff !important;
+        border: 1px solid #e3ddd2;
+        border-radius: .8rem;
+        box-shadow: 0 2px 8px rgba(23, 60, 53, .08);
+        min-height: 7.25rem;
+        padding: 1rem;
+    }
+    [data-testid="stMetricLabel"], [data-testid="stMetricLabel"] * { color: #52645d !important; }
+    [data-testid="stMetricValue"], [data-testid="stMetricValue"] * { color: #173c35 !important; }
+    @media (max-width: 640px) {
+        [data-testid="stMainBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
+        [data-testid="stMetric"] { min-height: 6.4rem; padding: .8rem; }
+        .produto-titulo { font-size: 1.8rem; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
