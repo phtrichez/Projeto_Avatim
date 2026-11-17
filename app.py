@@ -247,15 +247,11 @@ with st.sidebar:
     tipos_de_produto = ["Todos", *sorted(tipo for tipo in opcoes_tipo["subcategoria"].unique() if tipo)]
     if st.session_state.get("refino_tipo_produto") not in tipos_de_produto:
         st.session_state["refino_tipo_produto"] = "Todos"
-    tipo_produto = st.pills(
+    tipo_produto = st.selectbox(
         "Tipo de produto (opcional)",
         tipos_de_produto,
-        selection_mode="single",
-        default="Todos",
         key="refino_tipo_produto",
         help="Use quando a cliente já souber que procura, por exemplo, um sabonete, óleo ou hidratante.",
-        width="stretch",
-        wrap=True,
     )
     opcoes_perfil = opcoes_tipo
     if tipo_produto != "Todos":
